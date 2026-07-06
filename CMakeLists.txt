@@ -1,0 +1,65 @@
+cmake_minimum_required(VERSION 3.17)
+project(mini-llama CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Debug)
+endif()
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR})
+
+# --- 错误码 + 文件日志框架 ---
+# 构建 errlog 静态库，并在编译前自动由 error_code_config.json 生成
+# generated/error_code_enum.h。errlog PUBLIC 传递 spdlog/json 及其头文件路径。
+add_subdirectory(errlog)
+
+# 编译后把错误码配置拷贝到“可执行程序同级的 errlog/ 目录”，
+# 使程序无论从哪个工作目录启动，都能在自身目录下就近找到配置文件。
+set(ERRLOG_CONFIG_SRC ${CMAKE_SOURCE_DIR}/errlog/error_code_config.json)
+function(errlog_copy_config target)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                $<TARGET_FILE_DIR:${target}>/errlog
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${ERRLOG_CONFIG_SRC}
+                $<TARGET_FILE_DIR:${target}>/errlog/error_code_config.json
+        COMMENT "[${target}] copy error_code_config.json next to executable"
+        VERBATIM)
+endfunction()
+
+# --- Core library sources (MVP: CPU, F32) ---
+set(MINI_LLAMA_CORE_SOURCES
+    src/tensor.cc
+)
+
+# --- Main executable ---
+add_executable(mini-llama ${MINI_LLAMA_CORE_SOURCES}
+    src/main.cc
+)
+# 链接 errlog（自动带上 spdlog/json 头文件路径与库）。
+target_link_libraries(mini-llama PRIVATE errlog)
+# 保证枚举头文件先于核心源码生成。
+add_dependencies(mini-llama errlog_gen_enum)
+# 拷贝配置到可执行程序同级 errlog/ 目录。
+errlog_copy_config(mini-llama)
+# --- Test executable ---
+add_executable(mini-llama-tests
+    ${MINI_LLAMA_CORE_SOURCES}
+    tests/test_main.cc
+    tests/test_tensor.cc
+)
+target_link_libraries(mini-llama-tests PRIVATE errlog)
+add_dependencies(mini-llama-tests errlog_gen_enum)
+# 拷贝配置到测试可执行程序同级 errlog/ 目录。
+errlog_copy_config(mini-llama-tests)
+
+enable_testing()
+add_test(NAME mini-llama-tests COMMAND mini-llama-tests
+         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+find_package(GTest REQUIRED)
+target_link_libraries(mini-llama-tests PRIVATE GTest::gtest GTest::gtest_main)

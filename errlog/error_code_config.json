@@ -1,0 +1,137 @@
+{
+  "_comment": "全局唯一错误码配置文件。新增错误只需在此追加一条记录，无需改动任何 C++ 源码。code_str 为不带 k 前缀的 CamelCase 语义标识，Python 脚本会加上 'k' 生成枚举成员名。",
+  "_field_spec": {
+    "code": "int，分段数字错误码。约定分段：0=成功；100xxxxx=公共通用/框架；110xxxxx=张量(Tensor)校验；120xxxxx=算子(Ops/Matmul)校验",
+    "code_str": "CamelCase 语义标识(不带 k 前缀)，用于日志展示与字符串查表，必须全局唯一。枚举成员名 = 'k' + code_str(如 TensorShapeEmpty -> kTensorShapeEmpty)",
+    "level": "日志级别，可选 trace / debug / info / warn / err / critical",
+    "msg_cn": "上层展示给用户的友好中文提示",
+    "log_desc": "日志详情描述，支持 {} 占位符，由调用方按顺序填充上下文参数",
+    "need_alert": "bool，true 代表严重异常，日志正文前追加 [ALERT] 标记（仅本地标记，不对接远程告警）"
+  },
+
+  "errors": [
+    {
+      "code": 0,
+      "code_str": "Ok",
+      "level": "info",
+      "msg_cn": "成功",
+      "log_desc": "operation succeeded",
+      "need_alert": false
+    },
+
+    {
+      "code": 10000001,
+      "code_str": "CommonNotImplemented",
+      "level": "err",
+      "msg_cn": "该功能尚未实现",
+      "log_desc": "feature not implemented yet: what={}",
+      "need_alert": false
+    },
+
+    {
+      "code": 11000001,
+      "code_str": "TensorShapeEmpty",
+      "level": "err",
+      "msg_cn": "张量形状非法",
+      "log_desc": "tensor shape is empty: caller={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000002,
+      "code_str": "TensorDimNotPositive",
+      "level": "err",
+      "msg_cn": "张量维度非法",
+      "log_desc": "tensor dimension must be positive: caller={}, axis={}, dim={}, shape={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000003,
+      "code_str": "TensorNumelOverflow",
+      "level": "critical",
+      "msg_cn": "张量元素数量溢出",
+      "log_desc": "tensor element count overflow: caller={}, shape={}",
+      "need_alert": true
+    },
+    {
+      "code": 11000004,
+      "code_str": "TensorRankMismatch",
+      "level": "err",
+      "msg_cn": "张量维数不匹配",
+      "log_desc": "tensor rank mismatch: caller={}, expected_rank={}, actual_shape={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000005,
+      "code_str": "TensorIndexOutOfRange",
+      "level": "err",
+      "msg_cn": "张量下标越界",
+      "log_desc": "tensor index out of range: caller={}, flat_index={}, axis={}, axis_size={}, shape={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000006,
+      "code_str": "TensorIndexCountMismatch",
+      "level": "err",
+      "msg_cn": "张量索引个数不匹配",
+      "log_desc": "tensor index count mismatch: shape={}, expected_indices={}, got_indices={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000007,
+      "code_str": "TensorShapeMismatch",
+      "level": "err",
+      "msg_cn": "张量形状不匹配",
+      "log_desc": "tensor shape mismatch: caller={}, expected={}, got={}",
+      "need_alert": false
+    },
+    {
+      "code": 11000008,
+      "code_str": "TensorReshapeSizeMismatch",
+      "level": "err",
+      "msg_cn": "张量 reshape 元素数量不一致",
+      "log_desc": "cannot reshape tensor: caller={}, from_elements={}, to_elements={}",
+      "need_alert": false
+    },
+
+    {
+      "code": 12000001,
+      "code_str": "OpRankInvalid",
+      "level": "err",
+      "msg_cn": "算子输入维数非法",
+      "log_desc": "operator input rank invalid: op={}, detail={}",
+      "need_alert": false
+    },
+    {
+      "code": 12000002,
+      "code_str": "OpDimMismatch",
+      "level": "err",
+      "msg_cn": "算子输入维度不一致",
+      "log_desc": "operator input dimension mismatch: op={}, detail={}",
+      "need_alert": false
+    },
+    {
+      "code": 12000003,
+      "code_str": "OpEmptyInput",
+      "level": "err",
+      "msg_cn": "算子输入为空",
+      "log_desc": "operator input is empty: op={}",
+      "need_alert": false
+    },
+    {
+      "code": 12000004,
+      "code_str": "OpShapeMismatch",
+      "level": "err",
+      "msg_cn": "算子输入形状不一致",
+      "log_desc": "operator input shape mismatch: op={}, a_shape={}, b_shape={}",
+      "need_alert": false
+    },
+    {
+      "code": 12000005,
+      "code_str": "MatmulShapeIncompatible",
+      "level": "err",
+      "msg_cn": "矩阵乘形状不兼容",
+      "log_desc": "matmul shape incompatible: op={}, a_shape={}, b_shape={}",
+      "need_alert": false
+    }
+  ]
+}
