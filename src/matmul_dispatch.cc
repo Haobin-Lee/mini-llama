@@ -74,8 +74,10 @@ Tensor matmulDispatch(const Tensor& a, const Tensor& b, MatmulMode mode) {
             // TODO: 多线程实现
             break;
         case MatmulMode::kSimd:
+            // TODO: SIMD实现
+            break;
         case MatmulMode::kThreadedSimd:
-            // TODO:
+            // TODO: 多线程 + SIMD实现
             // matmul是跨列访问的，缓存不友好，SIMD会比较复杂，所以这里使用多线程
             break;
     }

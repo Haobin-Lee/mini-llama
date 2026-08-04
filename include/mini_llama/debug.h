@@ -25,10 +25,11 @@ struct BenchmarkResult {
         return total_ms <= 0.0 ? 0.0 : n_generated_tokens * 1000.0 / total_ms;
     }
     double decodeTokensPerSec() const {
-        return (decode_ms <= 0.0 || n_decode_tokens <= 0)
-               ? 0.0
-               : n_decode_tokens * 1000.0 / decode_ms;
-  }
+        if (decode_ms <= 0.0 || n_decode_tokens <= 0) {
+            return 0.0;
+        }
+        return n_decode_tokens * 1000.0 / decode_ms;
+    }
 };
 
 void dumpTensorShape(const Tensor& t, const std::string& name);
