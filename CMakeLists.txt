@@ -34,6 +34,26 @@ endfunction()
 # --- Core library sources (MVP: CPU, F32) ---
 set(MINI_LLAMA_CORE_SOURCES
     src/tensor.cc
+    src/tokenizer_bpe.cc
+    src/tokenizer_ascii.cc
+    src/tokenizer_json.cc
+    src/ops.cc
+    src/matmul_dispatch.cc
+    src/kv_cache.cc
+    src/threadpool.cc
+    src/forward.cc
+    src/request_context.cc
+    src/quantized_tensor.cc
+    src/context.cc
+    src/model.cc
+    src/chat.cc
+    src/sampler.cc
+    src/terminal.cc
+    src/loader.cc
+    src/prompt_builder.cc
+    src/node_memory_pool.cc
+    src/radix_tree.cc
+    src/batch.cc
 )
 
 # --- Main executable ---
@@ -51,6 +71,10 @@ add_executable(mini-llama-tests
     ${MINI_LLAMA_CORE_SOURCES}
     tests/test_main.cc
     tests/test_tensor.cc
+    tests/test_tokenizer.cc
+    tests/test_ops.cc
+    tests/test_kv_cache.cc
+    tests/test_forward.cc
 )
 target_link_libraries(mini-llama-tests PRIVATE errlog)
 add_dependencies(mini-llama-tests errlog_gen_enum)

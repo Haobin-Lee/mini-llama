@@ -30,7 +30,7 @@ struct LogConfig {
     bool enable_console = true;
 
     // 是否使用异步日志。false 则退化为同步日志（见 .cc 中的备选注释）。
-    bool async = true;
+    bool async = false;
 };
 
 // 初始化全局 logger 并设为 spdlog 默认 logger。

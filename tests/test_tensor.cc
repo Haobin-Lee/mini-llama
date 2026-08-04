@@ -21,7 +21,7 @@ static bool testTensorShapeAndSize() {
     return true;
 }
 
-// TODO: add tests for flatIndex, at, assertShape, reshapeChecked.
+// TODO: add tests for flatIndex, at, isSameShape, reshapeChecked.
 static bool testTensorIndexing() {
     Tensor t({2, 3}, 0.0f);
     t.at({0, 0}) = 1.0f;

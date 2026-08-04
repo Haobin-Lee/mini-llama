@@ -1,7 +1,7 @@
 {
   "_comment": "全局唯一错误码配置文件。新增错误只需在此追加一条记录，无需改动任何 C++ 源码。code_str 为不带 k 前缀的 CamelCase 语义标识，Python 脚本会加上 'k' 生成枚举成员名。",
   "_field_spec": {
-    "code": "int，分段数字错误码。约定分段：0=成功；100xxxxx=公共通用/框架；110xxxxx=张量(Tensor)校验；120xxxxx=算子(Ops/Matmul)校验",
+    "code": "int，分段数字错误码。约定分段：0=成功；100xxxxx=公共通用/框架；110xxxxx=张量(Tensor)校验；120xxxxx=算子(Ops/Matmul)校验；130xxxxx=分词器(Tokenizer)；140xxxxx=KV缓存/推理；150xxxxx=参数;160xxxxx=模型加载(Loader)",
     "code_str": "CamelCase 语义标识(不带 k 前缀)，用于日志展示与字符串查表，必须全局唯一。枚举成员名 = 'k' + code_str(如 TensorShapeEmpty -> kTensorShapeEmpty)",
     "level": "日志级别，可选 trace / debug / info / warn / err / critical",
     "msg_cn": "上层展示给用户的友好中文提示",
@@ -18,7 +18,6 @@
       "log_desc": "operation succeeded",
       "need_alert": false
     },
-
     {
       "code": 10000001,
       "code_str": "CommonNotImplemented",
@@ -27,13 +26,21 @@
       "log_desc": "feature not implemented yet: what={}",
       "need_alert": false
     },
+    {
+      "code": 1000002,
+      "code_str": "OpenFileFailed",
+      "level": "err",
+      "msg_cn": "打开文件失败",
+      "log_desc": "Failed to open file: filename={}",
+      "need_alert": false
+    },
 
     {
       "code": 11000001,
       "code_str": "TensorShapeEmpty",
       "level": "err",
       "msg_cn": "张量形状非法",
-      "log_desc": "tensor shape is empty: caller={}",
+      "log_desc": "tensor shape is empty: {}",
       "need_alert": false
     },
     {
@@ -92,7 +99,38 @@
       "log_desc": "cannot reshape tensor: caller={}, from_elements={}, to_elements={}",
       "need_alert": false
     },
-
+     {
+      "code": 11000009,
+      "code_str": "InvalidTensorDim",
+      "level": "err",
+      "msg_cn": "张量维度不合法",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 11000010,
+      "code_str": "TensorOutofRange",
+      "level": "err",
+      "msg_cn": "张量访问越界",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 11000011,
+      "code_str": "TensorValueOutofRange",
+      "level": "err",
+      "msg_cn": "张量值越界",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 11000012,
+      "code_str": "QuantTypeMismatch",
+      "level": "err",
+      "msg_cn": "量化张量类型不匹配",
+      "log_desc": "{}",
+      "need_alert": false
+    },
     {
       "code": 12000001,
       "code_str": "OpRankInvalid",
@@ -131,6 +169,110 @@
       "level": "err",
       "msg_cn": "矩阵乘形状不兼容",
       "log_desc": "matmul shape incompatible: op={}, a_shape={}, b_shape={}",
+      "need_alert": false
+    },
+    {
+      "code": 12000006,
+      "code_str": "RopeError",
+      "level": "err",
+      "msg_cn": "Rope参数错误",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 13000001,
+      "code_str": "EmptyVocab",
+      "level": "err",
+      "msg_cn": "词汇表为空",
+      "log_desc": "vocab is empty",
+      "need_alert": false
+    },
+    {
+      "code": 13000002,
+      "code_str": "LoadJsonFailed",
+      "level": "err",
+      "msg_cn": "加载JSON文件失败",
+      "log_desc": "Failed to load JSON file: filename={}",
+      "need_alert": false
+    },
+    {
+      "code": 13000003,
+      "code_str": "LoadBPE",
+      "level": "info",
+      "msg_cn": "加载BPE参数",
+      "log_desc": "BPE tokenizer loaded: vocab= {}, merges= {}, bos= {}, eos= {}, unk= {}",
+      "need_alert": false
+    },
+    {
+      "code": 13000004,
+      "code_str": "ByteOutOfRange",
+      "level": "err",
+      "msg_cn": "字节超出范围",
+      "log_desc": "byte {} >= b2u_ size {}",
+      "need_alert": false
+    },
+    {
+      "code": 13000005,
+      "code_str": "InvalidVocabID",
+      "level": "err",
+      "msg_cn": "无效的词汇ID",
+      "log_desc": "key={}",
+      "need_alert": false
+    },
+    {
+      "code": 13000006,
+      "code_str": "VocabParseError",
+      "level": "err",
+      "msg_cn": "词表解析失败",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 14000001,
+      "code_str": "RequreTensor4D",
+      "level": "err",
+      "msg_cn": "要求KV张量为4维",
+      "log_desc": "tensor name: {}",
+      "need_alert": false
+    },
+    {
+      "code": 14000002,
+      "code_str": "InvalidBatchSize",
+      "level": "err",
+      "msg_cn": "无效的Batch",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 14000003,
+      "code_str": "ForwardFailed",
+      "level": "err",
+      "msg_cn": "推理失败",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 14000004,
+      "code_str": "ForwardBiasMismatch",
+      "level": "err",
+      "msg_cn": "偏置形状不匹配",
+      "log_desc": "{}: bias shape mismatch x= {} bias= {}",
+      "need_alert": false
+    },
+     {
+      "code": 15000001,
+      "code_str": "InvalidParam",
+      "level": "err",
+      "msg_cn":"无效的参数",
+      "log_desc": "{}",
+      "need_alert": false
+    },
+    {
+      "code": 16000001,
+      "code_str": "LoaderParseError",
+      "level": "err",
+      "msg_cn": "模型加载解析失败",
+      "log_desc": "{}",
       "need_alert": false
     }
   ]

@@ -19,49 +19,49 @@ namespace errlog {
 
 namespace {
 
-// 返回当前可执行程序所在目录（Linux 通过 /proc/self/exe 解析）。
-// 解析失败返回空串。
-std::string executableDir() {
+    // 返回当前可执行程序所在目录（Linux 通过 /proc/self/exe 解析）。
+    // 解析失败返回空串。
+    std::string executableDir() {
 #if defined(__linux__)
-    char buf[PATH_MAX];
-    ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (n > 0) {
-        buf[n] = '\0';
-        return std::filesystem::path(buf).parent_path().string();
-    }
+        char buf[PATH_MAX];
+        ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = '\0';
+            return std::filesystem::path(buf).parent_path().string();
+        }
 #endif
-    return std::string();
-}
-
-// 将配置里的 level 字符串转换为 spdlog 级别枚举。
-// 非法级别直接视为致命错误终止（配置阶段就应暴露问题）。
-spdlog::level::level_enum parseLevel(const std::string& level,
-                                     const std::string& code_str) {
-    if (level == "trace") {
-        return spdlog::level::trace;
-    }
-    if (level == "debug") {
-        return spdlog::level::debug;
-    }
-    if (level == "info") {
-        return spdlog::level::info;
-    }
-    if (level == "warn") {
-        return spdlog::level::warn;
-    }
-    if (level == "err") {
-        return spdlog::level::err;
-    }
-    if (level == "critical") {
-        return spdlog::level::critical;
+        return std::string();
     }
 
-    // 这里 spdlog 可能尚未初始化 sink，用 critical + 退出保证问题不被吞掉。
-    spdlog::critical(
-        "[ErrorCodeMgr] invalid level '{}' for code_str='{}', abort", level,
-        code_str);
-    std::exit(EXIT_FAILURE);
-}
+    // 将配置里的 level 字符串转换为 spdlog 级别枚举。
+    // 非法级别直接视为致命错误终止（配置阶段就应暴露问题）。
+    spdlog::level::level_enum parseLevel(const std::string& level,
+                                         const std::string& code_str) {
+        if (level == "trace") {
+            return spdlog::level::trace;
+        }
+        if (level == "debug") {
+            return spdlog::level::debug;
+        }
+        if (level == "info") {
+            return spdlog::level::info;
+        }
+        if (level == "warn") {
+            return spdlog::level::warn;
+        }
+        if (level == "err") {
+            return spdlog::level::err;
+        }
+        if (level == "critical") {
+            return spdlog::level::critical;
+        }
+
+        // 这里 spdlog 可能尚未初始化 sink，用 critical + 退出保证问题不被吞掉。
+        spdlog::critical(
+            "[ErrorCodeMgr] invalid level '{}' for code_str='{}', abort", level,
+            code_str);
+        std::exit(EXIT_FAILURE);
+    }
 
 }  // namespace
 
@@ -168,8 +168,8 @@ void ErrorCodeMgr::loadFromFile(const std::string& config_path) {
     }
 
     loaded_ = true;
-    spdlog::error("[ErrorCodeMgr] loaded {} error codes from {}",
-                  by_code_.size(), config_path);
+    spdlog::info("[ErrorCodeMgr] loaded {} error codes from {}",
+                 by_code_.size(), config_path);
 }
 
 const ErrorMeta* ErrorCodeMgr::getMetaByCode(int code) const {
