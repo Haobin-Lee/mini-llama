@@ -13,68 +13,69 @@ namespace mini_llama {
 using errlog::ErrorCode;
 
 namespace {
-const char* callerName(const char* caller) {
-    return caller == nullptr ? "Tensor" : caller;
-}
-
-std::string shapeToString(const std::vector<int>& shape) {
-    std::string s = "[";
-    for (size_t i = 0; i < shape.size(); i++) {
-        s += std::to_string(shape[i]);
-        if (i < shape.size() - 1) {
-            s += ", ";
-        }
-    }
-    s += "]";
-    return s;
-}
-
-size_t checkedNumel(const std::vector<int>& shape, const char* caller) {
-    size_t total = 1;
-    if (shape.empty()) {
-        // 错误码：张量形状为空
-        BIZLOG(ErrorCode::kTensorShapeEmpty, callerName(caller));
-        return 0;
+    const char* callerName(const char* caller) {
+        return caller == nullptr ? "Tensor" : caller;
     }
 
-    for (int axis = 0; axis < shape.size(); ++axis) {
-        int dim = shape[axis];
-        if (dim <= 0) {
-            // 错误码：维度非正
-            BIZLOG(ErrorCode::kTensorDimNotPositive, callerName(caller), axis,
-                   dim, shapeToString(shape));
-            return 0;
+    std::string shapeToString(const std::vector<int>& shape) {
+        std::string s = "[";
+        for (size_t i = 0; i < shape.size(); i++) {
+            s += std::to_string(shape[i]);
+            if (i < shape.size() - 1) {
+                s += ", ";
+            }
         }
-        if (total > std::numeric_limits<size_t>::max() / dim) {
-            // 错误码：元素数量溢出（critical + [ALERT]）
-            BIZLOG(ErrorCode::kTensorNumelOverflow, callerName(caller),
-                   shapeToString(shape));
+        s += "]";
+        return s;
+    }
+
+    size_t checkedNumel(const std::vector<int>& shape, const char* caller) {
+        size_t total = 1;
+        if (shape.empty()) {
+            // 错误码：张量形状为空
+            BIZLOG(ErrorCode::kTensorShapeEmpty,
+                   std::string("caller= ") + callerName(caller));
             return 0;
         }
 
-        total *= dim;
+        for (int axis = 0; axis < shape.size(); ++axis) {
+            int dim = shape[axis];
+            if (dim <= 0) {
+                // 错误码：维度非正
+                BIZLOG(ErrorCode::kTensorDimNotPositive, callerName(caller),
+                       axis, dim, shapeToString(shape));
+                return 0;
+            }
+            if (total > std::numeric_limits<size_t>::max() / dim) {
+                // 错误码：元素数量溢出（critical + [ALERT]）
+                BIZLOG(ErrorCode::kTensorNumelOverflow, callerName(caller),
+                       shapeToString(shape));
+                return 0;
+            }
+
+            total *= dim;
+        }
+
+        return total;
     }
 
-    return total;
-}
-
-void checkRank(const Tensor& t, int expected_rank, const char* caller) {
-    if (t.numDims() != expected_rank) {
-        // 错误码：维数不匹配
-        BIZLOG(ErrorCode::kTensorRankMismatch, callerName(caller),
-               expected_rank, t.shapeString());
+    void checkRank(const Tensor& t, int expected_rank, const char* caller) {
+        if (t.numDims() != expected_rank) {
+            // 错误码：维数不匹配
+            BIZLOG(ErrorCode::kTensorRankMismatch, callerName(caller),
+                   expected_rank, t.shapeString());
+        }
     }
-}
 
-void checkAxisIndex(const Tensor& t, int axis, int flat_index,
-                    const char* caller) {
-    const int dim = t.shape[axis];
-    if (flat_index < 0 || flat_index >= dim) {
-        // 错误码：下标越界
-        BIZLOG(ErrorCode::kTensorIndexOutOfRange, callerName(caller),
-               flat_index, axis, dim, t.shapeString());
+    void checkAxisIndex(const Tensor& t, int axis, int flat_index,
+                        const char* caller) {
+        const int dim = t.shape[axis];
+        if (flat_index < 0 || flat_index >= dim) {
+            // 错误码：下标越界
+            BIZLOG(ErrorCode::kTensorIndexOutOfRange, callerName(caller),
+                   flat_index, axis, dim, t.shapeString());
+        }
     }
-}
 }  // namespace
 
 Tensor::Tensor(const std::vector<int>& input_shape, float fill)
@@ -177,13 +178,15 @@ const float* Tensor::rowPtr(int row) const {
     return data.data() + row * shape[1];
 }
 
-void Tensor::assertShape(const std::vector<int>& expected,
+bool Tensor::isSameShape(const std::vector<int>& expected,
                          const char* caller) const {
     if (shape != expected) {
         // 错误码：形状不匹配
         BIZLOG(ErrorCode::kTensorShapeMismatch, callerName(caller),
                shapeToString(expected), shapeString());
+        return false;
     }
+    return true;
 }
 
 Tensor Tensor::reshapeChecked(const std::vector<int>& new_shape,

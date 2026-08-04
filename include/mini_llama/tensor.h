@@ -22,6 +22,7 @@ struct Tensor {
     size_t size() const { return data.size(); }
     size_t numElements() const { return data.size(); }
     int numDims() const { return static_cast<int>(shape.size()); }
+    bool empty() const { return size() == 0; }
 
     // Compute flat index from multi-dimensional indices.
     size_t flatIndex(const std::vector<int>& indices) const;
@@ -44,8 +45,7 @@ struct Tensor {
     float* rowPtr(int row);
     const float* rowPtr(int row) const;
 
-    // Throw if shape != expected.
-    void assertShape(const std::vector<int>& expected,
+    bool isSameShape(const std::vector<int>& expected,
                      const char* caller) const;
 
     // Reshape after verifying element count is unchanged.
