@@ -83,7 +83,11 @@ static Tensor addOptionalBias(const Tensor& x, const Tensor& bias,
         return Tensor();
     }
 
-    return x;
+    Tensor y = x;
+    for (int i = 0; i < x.shape[0]; ++i) {
+        y.data[i] += bias.data[i];
+    }
+    return y;
 }
 
 static Tensor forwardLinear(const MiniLlamaModel& model, const Tensor& input,
@@ -307,7 +311,6 @@ static Tensor forwardLayer(MiniLlamaContext& ctx, const MiniLlamaModel& model,
         std::cout << "attention_conn empty" << std::endl;
         return attention_conn;
     }
-
     Tensor attention_proj =
         forwardLinear(model, attention_conn, layer_weights.wo,
                       std::string(layer_prefix) + "wo");

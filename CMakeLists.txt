@@ -9,6 +9,21 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
+option(MINI_LLAMA_AVX2 "Enable AVX2 SIMD optimizations" ON)
+
+
+if(MINI_LLAMA_AVX2)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-mavx2 -mfma" COMPILER_SUPPORTS_AVX2)
+    if(COMPILER_SUPPORTS_AVX2)
+        add_compile_options(-mavx2 -mfma)
+        message(STATUS "AVX2 + FMA enabled")
+    else()
+        message(WARNING "AVX2 not supported by compiler, falling back to scalar")
+    endif()
+endif()
+
+
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR})
 
@@ -54,6 +69,11 @@ set(MINI_LLAMA_CORE_SOURCES
     src/node_memory_pool.cc
     src/radix_tree.cc
     src/batch.cc
+    src/gguf.cc
+    src/gguf_loader.cc
+    src/gguf_tokenizer.cc
+    src/debug.cc
+    src/quant.cc
 )
 
 # --- Main executable ---
@@ -75,6 +95,8 @@ add_executable(mini-llama-tests
     tests/test_ops.cc
     tests/test_kv_cache.cc
     tests/test_forward.cc
+    tests/test_batch.cc
+    tests/test_quant.cc
 )
 target_link_libraries(mini-llama-tests PRIVATE errlog)
 add_dependencies(mini-llama-tests errlog_gen_enum)
@@ -87,3 +109,14 @@ add_test(NAME mini-llama-tests COMMAND mini-llama-tests
 
 find_package(GTest REQUIRED)
 target_link_libraries(mini-llama-tests PRIVATE GTest::gtest GTest::gtest_main)
+
+
+if(Python3_Interpreter_FOUND)
+    add_test(
+        NAME golden-logits
+        COMMAND ${CMAKE_COMMAND} -E env
+            MINI_LLAMA_BIN=$<TARGET_FILE:mini-llama>
+            ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_golden.py
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    )
+endif()

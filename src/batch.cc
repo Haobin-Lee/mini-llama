@@ -51,6 +51,7 @@ Tensor forwardBatch(MiniLlamaContext& ctx, const MiniLlamaModel& model,
         }
         ctx.token_history.push_back(batch.tokens[i]);
     }
+    return logits;
 }
 
 }  // namespace mini_llama

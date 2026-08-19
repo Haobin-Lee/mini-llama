@@ -105,7 +105,7 @@ struct QuantizedTensor {
         return n;
     }
 
-    std::string shapeStringShort() const {
+    std::string shapeString() const {
         std::string s = "[";
         for (size_t i = 0; i < shape.size(); ++i) {
             s += std::to_string(shape[i]);
@@ -120,10 +120,9 @@ struct QuantizedTensor {
     bool isSameShape(const std::vector<int>& expected,
                      const char* caller) const {
         if (shape != expected) {
-            BIZLOG(
-                ErrorCode::kTensorShapeMismatch, std::string(caller),
-                QuantizedTensor{QuantType::kF32, expected}.shapeStringShort(),
-                shapeStringShort());
+            BIZLOG(ErrorCode::kTensorShapeMismatch, std::string(caller),
+                   QuantizedTensor{QuantType::kF32, expected}.shapeString(),
+                   shapeString());
             return false;
         }
 
