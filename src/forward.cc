@@ -212,12 +212,11 @@ static Tensor forwardAttention(KvCache& kv_cache, int pos,
     // 缓存KV
     kv_cache.write(layer, pos, k, v);
 
-    float sum = 0.0f;
     float scale = std::sqrt(1.0f / head_dim);
     Tensor attention_out{{n_heads, head_dim}, 0.0f};
     auto compute_head = [&](int head) {
+        float sum = 0.0f;
         int kv_head = mapKVHead(n_heads, n_kv_heads, head);
-
         std::vector<float> scores_data(pos + 1, 0.0f);
         for (int i = 0; i <= pos; ++i) {
             sum = 0.0f;
@@ -268,7 +267,7 @@ static Tensor forwardLayer(MiniLlamaContext& ctx, const MiniLlamaModel& model,
     int head_dim = model_config.head_dim;
     int dim = model_config.dim;
     int pos = ctx.pos;
-    std::string_view layer_prefix = "layer" + std::to_string(layer) + ".";
+    std::string layer_prefix = "layer" + std::to_string(layer) + ".";
 
     // 1. RMS Norm
     Tensor norm_input = forwardRmsNorm(

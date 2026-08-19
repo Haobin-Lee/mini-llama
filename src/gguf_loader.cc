@@ -227,10 +227,14 @@ static bool validateLoadedShapes(const MiniLlamaModel& model) {
     const int q_dim = c.n_heads * c.head_dim;
     const int kv_dim = c.n_kv_heads * c.head_dim;
 
-    checkShape(model.token_embedding, {c.vocab_size, c.dim},
-               "GGUF token_embedding");
-    checkShape(model.final_norm, {c.dim}, "GGUF final_norm");
-    checkShape(model.lm_head, {c.vocab_size, c.dim}, "GGUF lm_head");
+    bool check_shape = checkShape(model.token_embedding, {c.vocab_size, c.dim},
+                                  "GGUF token_embedding");
+    check_shape &= checkShape(model.final_norm, {c.dim}, "GGUF final_norm");
+    check_shape &=
+        checkShape(model.lm_head, {c.vocab_size, c.dim}, "GGUF lm_head");
+    if (!check_shape) {
+        return false;
+    }
 
     if (model.layers.size() != static_cast<size_t>(c.n_layers)) {
         BIZLOG(ErrorCode::kLoadGGUFError,
@@ -426,7 +430,7 @@ MiniLlamaModel loadGgufModel(const std::string& gguf_path) {
 
     auto load_optional_f32 = [&](const std::string& mapped_name) -> Tensor {
         if (tensor_map.find(mapped_name) == tensor_map.end()) {
-            throw std::runtime_error("Missing tensor: " + mapped_name);
+            return Tensor();
         }
         return load_f32(mapped_name);
     };
