@@ -1,7 +1,7 @@
 // Copyright (c) 2026
 // SPDX-License-Identifier: MIT
 
-// implement prompt building (plain + chat template).
+// implement prompt building (plain, qwen2, chat template, gguf template).
 
 #include "mini_llama/prompt_builder.h"
 
@@ -9,6 +9,8 @@
 #include <stack>
 #include <string>
 #include <vector>
+
+#include "mini_llama/gguf.h"
 
 namespace mini_llama {
 
@@ -510,5 +512,32 @@ std::string PromptBuilder::buildQwen2(
 }
 
 // ===========================================================================
+// Load chat template from GGUF
+// ===========================================================================
+
+std::string loadChatTemplateFromGguf(const std::string& gguf_path) {
+    std::string tmpl;
+    if (!getMetadataString(gguf_path, "tokenizer.chat_template", tmpl)) {
+        std::string architecture;
+        if (getMetadataString(gguf_path, "general.architecture",
+                              architecture) &&
+            architecture == "qwen2") {
+            return "qwen2";
+        }
+        return "";
+    }
+
+    // For known templates, we can still use the optimized built-in path.
+    // Check if this is the standard Qwen2 template.
+    if (tmpl.find("{% for message in messages %}") != std::string::npos &&
+        tmpl.find("<|im_start|>") != std::string::npos &&
+        tmpl.find("<|im_end|>") != std::string::npos) {
+        // Return the raw template so the Jinja2 engine can execute it.
+        return tmpl;
+    }
+
+    // Return the template string for the Jinja2 engine
+    return tmpl;
+}
 
 }  // namespace mini_llama

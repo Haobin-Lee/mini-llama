@@ -59,6 +59,15 @@ struct MiniLlamaModel {
 
 // Total bytes consumed by all weight tensors.
 size_t modelWeightBytes(const MiniLlamaModel& model);
+size_t modelWeightBytesF32(const MiniLlamaModel& model);
+
+// Convert all Linear weight QuantizedTensors from F32 to Q8_0 in-place.
+// Embedding, norm, and bias tensors remain unchanged.
+void quantizeModelToQ80(MiniLlamaModel& model);
+
+// Convert all Linear weight QuantizedTensors from F32 to Q4_0 in-place.
+// Embedding, norm, and bias tensors remain unchanged.
+void quantizeModelToQ40(MiniLlamaModel& model);
 
 }  // namespace mini_llama
 

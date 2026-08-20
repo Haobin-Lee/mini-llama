@@ -29,6 +29,10 @@ private:
     std::string buildQwen2(const std::vector<ChatMessage>& messages) const;
 };
 
+// Load chat template from a GGUF file. Returns the raw Jinja2 template string
+// if present, or "qwen2" as a fallback for known model families.
+std::string loadChatTemplateFromGguf(const std::string& gguf_path);
+
 }  // namespace mini_llama
 
 #endif  // INCLUDE_MINI_LLAMA_PROMPT_BUILDER_H_

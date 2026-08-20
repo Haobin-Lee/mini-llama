@@ -8,7 +8,7 @@
 
 #include "errlog/bizlog.h"  // 错误码日志：BIZLOG / ErrorCode
 #include "mini_llama/matmul_dispatch.h"
-#include "mini_llama/quantized_tensor.h"
+#include "mini_llama/quant.h"
 
 namespace mini_llama {
 
@@ -30,12 +30,11 @@ Tensor linear(const Tensor& x, const QuantizedTensor& weight) {
         case QuantType::kF32:
             return linear(x, toTensor(weight));
         case QuantType::kQ80:
-            // return LinearQ80(x, weight.q8_0_data, weight.shape);
+            return linearQ80(x, weight.q8_0_data, weight.shape);
         case QuantType::kQ40:
-            // return LinearQ40(x, weight.q4_0_data, weight.shape);
+            return linearQ40(x, weight.q4_0_data, weight.shape);
         case QuantType::kQ41:
-            // return LinearQ41(x, weight.q4_1_data, weight.shape);
-            break;
+            return linearQ41(x, weight.q4_1_data, weight.shape);
     }
     return Tensor();
 }
@@ -150,7 +149,7 @@ static void normalRope(int pos, float theta, Tensor& x) {
     int n_heads = x.shape[0];
     int head_dim = x.shape[1];
     for (int head = 0; head < n_heads; ++head) {
-        for (int i = 0; i < head_dim; ++i) {
+        for (int i = 0; i < head_dim; i += 2) {
             float freq =
                 1.0f / std::pow(theta, static_cast<float>(i) /
                                            static_cast<float>(head_dim));
@@ -186,7 +185,6 @@ static void neoxRope(int pos, float theta, Tensor& x) {
 }
 
 bool rope(Tensor& q, Tensor& k, int pos, float theta, RopeType rope_type) {
-    // TODO：通过Normal ROPE和NeoX ROPE 实现position embedding
     // q: [n_heads, head_dim], k: [n_kv_heads, head_dim]
     if (q.numDims() != 2 || k.numDims() != 2) {
         BIZLOG(ErrorCode::kRopeError, "Rope: expected 2D tensors");
