@@ -428,6 +428,7 @@ static int runGenerate(int argc, char** argv) {
     unsigned int seed = 0;
     std::string dump_logits_dir;
     std::string tokenizer_path;
+    BackendConfig backend_config;
     std::string quant_type;
     int n_threads = 0;
 
@@ -478,6 +479,18 @@ static int runGenerate(int argc, char** argv) {
                 std::cerr << "Invalid --threads value.\n";
                 return 1;
             }
+        } else if (std::strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+            if (!parseBackendArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --backend value. Supported values: cpu, "
+                             "cuda.\n";
+                return 1;
+            }
+        } else if (std::strcmp(argv[i], "--device") == 0 && i + 1 < argc) {
+            if (!parseDeviceArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --device value. Expected a non-negative "
+                             "integer.\n";
+                return 1;
+            }
         } else if (std::strcmp(argv[i], "-h") == 0 ||
                    std::strcmp(argv[i], "--help") == 0) {
             printGenerateUsage(argv[0]);
@@ -511,7 +524,8 @@ static int runGenerate(int argc, char** argv) {
                      "/model.bin";
     }
 
-    RequestContext request = startRequest("generate", "cpu", model_path);
+    RequestContext request = startRequest(
+        "generate", backendKindName(backend_config.kind), model_path);
 
     auto stage_start = RequestClock::now();
     LoadedModel lm = loadModelAndTokenizer(
@@ -542,6 +556,9 @@ static int runGenerate(int argc, char** argv) {
         return 1;
     }
     MiniLlamaModel& model = lm.model;
+    if (!prepareCudaWeightsOrPrint(model, backend_config)) {
+        return 1;
+    }
 
     stage_start = RequestClock::now();
     if (!applyQuantOverride(model, quant_type)) {
@@ -551,7 +568,6 @@ static int runGenerate(int argc, char** argv) {
     request.recordEvent("quantize", elapsedMs(stage_start), 0,
                         quant_type.empty() ? "model-native" : quant_type);
 
-    // TODO: cuda weight
     std::unique_ptr<ITokenizer>& tokenizer = lm.tokenizer;
     stage_start = RequestClock::now();
     std::vector<int> tokens = tokenizer->encode(prompt);
@@ -1154,6 +1170,7 @@ static int runBench(int argc, char** argv) {
     int n_predict = 64;
     unsigned int seed = 0;
     std::string tokenizer_path;
+    BackendConfig backend_config;
     bool verbose = false;
     std::string quant_type;
     int n_threads = 0;
@@ -1186,6 +1203,18 @@ static int runBench(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "--verbose") == 0) {
             verbose = true;
+        } else if (std::strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+            if (!parseBackendArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --backend value. Supported values: cpu, "
+                             "cuda.\n";
+                return 1;
+            }
+        } else if (std::strcmp(argv[i], "--device") == 0 && i + 1 < argc) {
+            if (!parseDeviceArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --device value. Expected a non-negative "
+                             "integer.\n";
+                return 1;
+            }
         } else if (std::strcmp(argv[i], "-h") == 0 ||
                    std::strcmp(argv[i], "--help") == 0) {
             printBenchUsage(argv[0]);
@@ -1220,6 +1249,9 @@ static int runBench(int argc, char** argv) {
 
     MiniLlamaModel baseline_model = lm.model;
     MiniLlamaModel& model = lm.model;
+    if (!prepareCudaWeightsOrPrint(model, backend_config)) {
+        return 1;
+    }
     std::unique_ptr<ITokenizer>& tokenizer = lm.tokenizer;
     std::vector<int> tokens = tokenizer->encode(prompt);
     if (tokens.size() > static_cast<size_t>(model.config.max_seq_len)) {
