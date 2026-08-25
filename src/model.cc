@@ -1,7 +1,6 @@
 // Copyright (c) 2026
 // SPDX-License-Identifier: MIT
 //
-// TODO(you): implement model helpers declared in model.h.
 
 #include "mini_llama/model.h"
 
@@ -147,6 +146,78 @@ void quantizeModelToQ40(MiniLlamaModel& model) {
         quantizeQtToQ40(lw.w_up);
         quantizeQtToQ40(lw.w_down);
     }
+}
+
+void uploadModelWeightsToCuda(MiniLlamaModel& model, int device_id) {
+#ifdef MINI_LLAMA_USE_CUDA
+    if (!model.loaded) {
+        throw std::runtime_error("CUDA weight upload requires a loaded model");
+    }
+
+    cudaSetDeviceId(device_id);
+    auto storage = std::make_shared<CudaModelWeights>();
+    storage->device_id = device_id;
+
+    // Global weights.
+    uploadF32TensorWeight(*storage, model.token_embedding, "token_embedding",
+                          device_id);
+    uploadF32TensorWeight(*storage, model.final_norm, "final_norm", device_id);
+    uploadLinearWeight(*storage, model.lm_head, "lm_head", device_id);
+
+    // Per-layer weights.
+    for (size_t layer = 0; layer < model.layers.size(); ++layer) {
+        const LayerWeights& lw = model.layers[layer];
+        const std::string prefix = "layers." + std::to_string(layer) + ".";
+
+        // Attention.
+        uploadF32TensorWeight(*storage, lw.attention_norm,
+                              prefix + "attention_norm", device_id);
+        uploadLinearWeight(*storage, lw.wq, prefix + "wq", device_id);
+        uploadLinearWeight(*storage, lw.wk, prefix + "wk", device_id);
+        uploadLinearWeight(*storage, lw.wv, prefix + "wv", device_id);
+        uploadF32TensorWeight(*storage, lw.bq, prefix + "bq", device_id);
+        uploadF32TensorWeight(*storage, lw.bk, prefix + "bk", device_id);
+        uploadF32TensorWeight(*storage, lw.bv, prefix + "bv", device_id);
+        uploadLinearWeight(*storage, lw.wo, prefix + "wo", device_id);
+
+        // FFN.
+        uploadF32TensorWeight(*storage, lw.ffn_norm, prefix + "ffn_norm",
+                              device_id);
+        uploadLinearWeight(*storage, lw.w_gate, prefix + "w_gate", device_id);
+        uploadLinearWeight(*storage, lw.w_up, prefix + "w_up", device_id);
+        uploadLinearWeight(*storage, lw.w_down, prefix + "w_down", device_id);
+    }
+
+    model.cuda_weights = std::move(storage);
+#else
+    (void)model;
+    (void)device_id;
+    throw std::runtime_error(
+        "CUDA weight upload requires CUDA. Reconfigure with "
+        "-DMINI_LLAMA_CUDA=ON.");
+#endif
+}
+
+void clearModelCudaWeights(MiniLlamaModel& model) {
+    model.cuda_weights.reset();
+}
+
+bool modelHasCudaWeights(const MiniLlamaModel& model) {
+    return model.cuda_weights != nullptr;
+}
+
+size_t modelCudaUploadedWeightCount(const MiniLlamaModel& model) {
+    if (!model.cuda_weights) {
+        return 0;
+    }
+    return model.cuda_weights->uploaded_weight_count;
+}
+
+size_t modelCudaMemoryBytes(const MiniLlamaModel& model) {
+    if (!model.cuda_weights) {
+        return 0;
+    }
+    return model.cuda_weights->uploaded_bytes;
 }
 
 }  // namespace mini_llama

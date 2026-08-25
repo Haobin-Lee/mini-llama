@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "errlog/log_guard.h"
+#include "mini_llama/backend.h"
 #include "mini_llama/chat.h"
 #include "mini_llama/context.h"
 #include "mini_llama/debug.h"
@@ -48,6 +49,17 @@ struct LoadedModel {
     MiniLlamaModel model;
     std::unique_ptr<ITokenizer> tokenizer;
     std::string chat_template;
+};
+
+struct LinearWeightTypeCounts {
+    size_t f32 = 0;
+    size_t q8_0 = 0;
+    size_t q4_0 = 0;
+    size_t q4_1 = 0;
+
+    size_t total() const { return f32 + q8_0 + q4_0 + q4_1; }
+
+    size_t quantized() const { return q8_0 + q4_0 + q4_1; }
 };
 
 static bool parseIntArg(const char* text, int& value) {
@@ -92,6 +104,25 @@ static bool parseFloatArg(const char* text, float& value) {
         return false;
     }
     value = static_cast<float>(parsed);
+    return true;
+}
+
+static bool parseBackendArg(const char* text, BackendConfig& config) {
+    BackendKind kind;
+    if (!parseBackendKind(text, kind)) {
+        return false;
+    }
+    config.kind = kind;
+    return true;
+}
+
+static bool parseDeviceArg(const char* text, BackendConfig& config) {
+    int device_id = 0;
+    if (!parseIntArg(text, device_id) || device_id < 0) {
+        return false;
+    }
+    config.device_id = device_id;
+    config.device_id_set = true;
     return true;
 }
 
@@ -292,6 +323,20 @@ static void printRequestTrace(const RequestContext& request,
         out << line << "\n";
     }
     out << formatRequestTraceSummary(request) << "\n";
+}
+
+static bool prepareCudaWeightsOrPrint(MiniLlamaModel& model,
+                                      const BackendConfig& config) {
+    if (config.kind != BackendKind::kCuda) {
+        return true;
+    }
+    try {
+        uploadModelWeightsToCuda(model, config.device_id);
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "CUDA weight upload failed: " << e.what() << "\n";
+        return false;
+    }
 }
 
 static void printGenerateUsage(const char* prog) {
@@ -707,6 +752,7 @@ int runChat(int argc, char** argv) {
     unsigned int seed = 0;
     int max_response_tokens = 64;
     std::string tokenizer_path;
+    BackendConfig backend_config;
 
     // 解析参数
     for (int i = 3; i < argc; ++i) {
@@ -739,6 +785,18 @@ int runChat(int argc, char** argv) {
             }
         } else if (std::strcmp(argv[i], "--tokenizer") == 0 && i + 1 < argc) {
             tokenizer_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+            if (!parseBackendArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --backend value. Supported values: cpu, "
+                             "cuda.\n";
+                return 1;
+            }
+        } else if (std::strcmp(argv[i], "--device") == 0 && i + 1 < argc) {
+            if (!parseDeviceArg(argv[++i], backend_config)) {
+                std::cerr << "Invalid --device value. Expected a non-negative "
+                             "integer.\n";
+                return 1;
+            }
         } else if (std::strcmp(argv[i], "-h") == 0 ||
                    std::strcmp(argv[i], "--help") == 0) {
             printRunUsage(argv[0]);
@@ -767,6 +825,9 @@ int runChat(int argc, char** argv) {
     }
 
     MiniLlamaModel& model = lm.model;
+    if (!prepareCudaWeightsOrPrint(model, backend_config)) {
+        return 1;
+    }
 
     std::unique_ptr<ITokenizer>& tokenizer = lm.tokenizer;
 
@@ -791,7 +852,7 @@ int runChat(int argc, char** argv) {
     }
 
     term.printMessage("mini-llama.cpp chat");
-
+    term.printMessage("backend: " + backendKindName(backend_config.kind));
     term.printMessage("Type /help for commands, /exit to quit.\n");
     if (lm.chat_template.empty() && model.config.max_seq_len <= 256) {
         term.printMessage(
@@ -845,7 +906,8 @@ int runChat(int argc, char** argv) {
             continue;
         }
 
-        RequestContext request = startRequest("run", "cpu", model_dir);
+        RequestContext request = startRequest(
+            "run", backendKindName(backend_config.kind), model_dir);
 
         std::vector<ChatMessage> candidate_messages = session.getMessages();
         candidate_messages.push_back({"user", input});
@@ -1058,7 +1120,7 @@ static void printBenchUsage(const char* prog) {
            "running on CPU\n";
 }
 
-static double BenchmarkRepeated(int warmup, int iterations,
+static double benchmarkRepeated(int warmup, int iterations,
                                 const std::function<void()>& fn) {
     for (int i = 0; i < warmup; ++i) {
         fn();

@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "mini_llama/cuda_runtime.h"
+#include "mini_llama/cuda_weight_upload.h"
 #include "mini_llama/quantized_tensor.h"
 #include "mini_llama/tensor.h"
 
@@ -55,6 +57,7 @@ struct MiniLlamaModel {
     std::vector<LayerWeights> layers;  // [n_layers]
     Tensor final_norm;                 // [dim]
     QuantizedTensor lm_head;           // [vocab_size, dim] F32/Q8_0/Q4_0
+    std::shared_ptr<CudaModelWeights> cuda_weights;
 };
 
 // Total bytes consumed by all weight tensors.
@@ -68,6 +71,30 @@ void quantizeModelToQ80(MiniLlamaModel& model);
 // Convert all Linear weight QuantizedTensors from F32 to Q4_0 in-place.
 // Embedding, norm, and bias tensors remain unchanged.
 void quantizeModelToQ40(MiniLlamaModel& model);
+
+// ---------------------------------------------------------------------------
+// CUDA weight management
+// ---------------------------------------------------------------------------
+
+// Uploads all model weights to CUDA device memory.
+// Called once after model loading, before inference begins.
+// After this call, model.cuda_weights != nullptr.
+void uploadModelWeightsToCuda(MiniLlamaModel& model, int device_id = 0);
+
+// Releases all CUDA device memory for weights.
+void clearModelCudaWeights(MiniLlamaModel& model);
+
+// Returns true if weights have been uploaded.
+bool modelHasCudaWeights(const MiniLlamaModel& model);
+
+// Returns total uploaded weight count.
+size_t modelCudaUploadedWeightCount(const MiniLlamaModel& model);
+
+// Returns total bytes of uploaded weights.
+size_t modelCudaMemoryBytes(const MiniLlamaModel& model);
+
+// Resets runtime stats (call between inference runs for profiling).
+void resetModelCudaRuntimeStats(MiniLlamaModel& model);
 
 }  // namespace mini_llama
 

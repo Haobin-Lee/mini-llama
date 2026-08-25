@@ -9,7 +9,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-option(MINI_LLAMA_AVX2 "Enable AVX2 SIMD optimizations" ON)
+option(MINI_LLAMA_CUDA "Build NVIDIA CUDA backend" ON)
+option(MINI_LLAMA_AVX2 "Enable AVX2 SIMD optimizations" OFF)
 
 
 if(MINI_LLAMA_AVX2)
@@ -21,6 +22,14 @@ if(MINI_LLAMA_AVX2)
     else()
         message(WARNING "AVX2 not supported by compiler, falling back to scalar")
     endif()
+endif()
+
+if(MINI_LLAMA_CUDA)
+    enable_language(CUDA)
+    if(NOT CMAKE_CUDA_ARCHITECTURES)
+        set(CMAKE_CUDA_ARCHITECTURES 75)
+    endif()
+    find_package(CUDAToolkit REQUIRED)
 endif()
 
 
@@ -74,20 +83,45 @@ set(MINI_LLAMA_CORE_SOURCES
     src/gguf_tokenizer.cc
     src/debug.cc
     src/quant.cc
+    src/cuda_runtime.cc
+    src/cuda_tensor.cc
+    src/cuda_ops.cc
+    src/cuda_matmul.cc
+    src/cuda_attention.cc
+    src/cuda_quant.cc
+    src/cuda_weight_upload.cc
+    src/cuda_kv_cache.cc
+    src/backdend.cc
+)
+
+if(MINI_LLAMA_CUDA)
+    list(APPEND MINI_LLAMA_CORE_SOURCES src/cuda_ops.cu)
+    list(APPEND MINI_LLAMA_CORE_SOURCES src/cuda_attention.cu)
+    list(APPEND MINI_LLAMA_CORE_SOURCES src/cuda_quant.cu)
+endif()
+
+# --- Main executable ---
+set(MAIN_SOURCES
+    ${MINI_LLAMA_CORE_SOURCES}
+    src/main.cc
 )
 
 # --- Main executable ---
-add_executable(mini-llama ${MINI_LLAMA_CORE_SOURCES}
-    src/main.cc
-)
+add_executable(mini-llama ${MAIN_SOURCES})
+
+if(MINI_LLAMA_CUDA)
+    target_compile_definitions(mini-llama PRIVATE MINI_LLAMA_USE_CUDA=1)
+    target_link_libraries(mini-llama PRIVATE CUDA::cudart CUDA::cublas)
+endif()
+
 # 链接 errlog（自动带上 spdlog/json 头文件路径与库）。
 target_link_libraries(mini-llama PRIVATE errlog)
 # 保证枚举头文件先于核心源码生成。
 add_dependencies(mini-llama errlog_gen_enum)
 # 拷贝配置到可执行程序同级 errlog/ 目录。
 errlog_copy_config(mini-llama)
-# --- Test executable ---
-add_executable(mini-llama-tests
+
+set(TEST_SOURCES 
     ${MINI_LLAMA_CORE_SOURCES}
     tests/test_main.cc
     tests/test_tensor.cc
@@ -98,6 +132,13 @@ add_executable(mini-llama-tests
     tests/test_batch.cc
     tests/test_quant.cc
 )
+# --- Test executable ---
+add_executable(mini-llama-tests ${TEST_SOURCES})
+if(MINI_LLAMA_CUDA)
+    target_compile_definitions(mini-llama-tests PRIVATE MINI_LLAMA_USE_CUDA=1)
+    target_link_libraries(mini-llama-tests PRIVATE CUDA::cudart CUDA::cublas)
+endif()
+
 target_link_libraries(mini-llama-tests PRIVATE errlog)
 add_dependencies(mini-llama-tests errlog_gen_enum)
 # 拷贝配置到测试可执行程序同级 errlog/ 目录。
@@ -120,3 +161,6 @@ if(Python3_Interpreter_FOUND)
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     )
 endif()
+
+# Release optimizations
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
