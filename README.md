@@ -1,93 +1,137 @@
-# DailyTraining
+# mini-llama
 
+一个用 C++17 从零实现的轻量级 LLM 推理引擎（Llama / Qwen2 风格），支持 CPU 与 CUDA 双后端、GGUF 与量化模型、分页 KV cache 与批量推理。
 
+## 特性
 
-## Getting started
+- **双后端**：CPU与 CUDA，通过 `backend.h` 统一抽象。
+- **多种模型格式**：
+  - 旧式 manifest：`model.json` + `model.bin`（如 `models/tiny/`）
+  - GGUF：支持 `q8_0` / `q4_0` / `q4_1` 量化权重
+- **量化**：`q8_0` / `q4_0` / `q4_1`，运行时也可通过 `--quant` 即时量化。
+- **分页 KV cache**：`kv_cache` + `radix_tree` + `node_memory_pool`，支持前缀复用（prefix reuse）。
+- **批量推理**：`batch` + `threadpool` + `matmul_dispatch` 的 prefill/decode 流水线。
+- **采样**：`temperature`、`top-k`、可复现的 `seed`。
+- **交互式聊天**：流式输出、chat template 支持（从 GGUF MetaData读取）。
+- **日志框架**：spdlog，按天切分到 `llama_logs/`，错误码由 `errlog/error_code_config.json` 在构建期生成。
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 构建
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### 依赖
 
-## Add your files
+- CMake ≥ 3.17
+- 支持 C++17 的编译器（如果nvcc版本为11.x，CUDA构建可以使用 `gcc-9`/`g++-9` 作为 host compiler）
+- CUDA Toolkit（仅当启用 CUDA 后端时）
+- Python3
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+### CPU 构建
 
+`MINI_LLAMA_CUDA` 默认 **ON**，纯 CPU 机器需要显式关闭：
+
+```bash
+cmake -S . -B build -DMINI_LLAMA_CUDA=OFF
+cmake --build build -j16
 ```
-cd existing_repo
-git remote add origin http://git.cpptrain.top/lihaobin/dailytraining.git
-git branch -M main
-git push -uf origin main
+
+CPU 开发循环可用 AVX2 + `-ffast-math`：
+
+```bash
+cmake -DMINI_LLAMA_AVX2=ON -DCMAKE_CXX_FLAGS="-ffast-math" -B build
+cmake --build build -j16
 ```
 
-## Integrate with your tools
+### CUDA 构建（RTX2060 super）
 
-- [ ] [Set up project integrations](http://git.cpptrain.top/lihaobin/dailytraining/-/settings/integrations)
+CUDA 构建： `gcc-9` 工具链与 `CMAKE_CUDA_ARCHITECTURES=75`（见 `cuda_build.sh`）：
 
-## Collaborate with your team
+```bash
+cmake -DMINI_LLAMA_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=75 \
+  -DCMAKE_C_COMPILER=gcc-9 \
+  -DCMAKE_CXX_COMPILER=g++-9 \
+  -DCMAKE_CUDA_HOST_COMPILER=g++-9 -B build
+cmake --build build -j16
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+构建产物：
 
-## Test and Deploy
+- `build/mini-llama` —— CLI 主程序
+- `build/mini-llama-tests` —— 测试程序
 
-Use the built-in continuous integration in GitLab.
+## 使用
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+CLI 提供以下子命令（裸 flag 参数会回退到 `generate`）：
 
-***
+```text
+mini-llama <command> [options]
 
-# Editing this README
+Commands:
+  generate       单次生成
+  run            交互式聊天
+  inspect-gguf   查看 GGUF 元数据
+  bench          prefill/decode 计时
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### 单次生成
 
-## Suggestions for a good README
+```bash
+./build/mini-llama generate \
+  --model models/tiny/model.bin \
+  --config models/tiny/model.json \
+  -p "hello" -n 16 \
+  --temperature 0.0 --top-k 0 --seed 1 \
+  --threads 4
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+常用选项：`--model <path|dir>`、`--config <path>`、`-p/--prompt`、`-n/--n-predict`、`--temperature`、`--top-k`、`--seed`、`--tokenizer`、`--quant q8_0|q4_0`、`--threads`、`--backend cpu|cuda`、`--device <n>`、`--dump-logits <dir>`。
 
-## Name
-Choose a self-explaining name for your project.
+### 交互式聊天
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```bash
+./build/mini-llama run models/chat -n 8
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+> `models/tiny/` 是随机权重的模型，仅用于冒烟测试；真实聊天请使用 `models/chat` 中的 Qwen2 量化 GGUF。
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### 查看 GGUF
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```bash
+./build/mini-llama inspect-gguf <path-to.gguf>
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 基准测试
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+```bash
+./build/mini-llama bench models/chat -p hi -n 15 --threads 4 --seed 1
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## 测试
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+项目使用自定义零依赖测试框架，测试返回 `bool` 并用 `MINI_LLAMA_ASSERT_*` 宏断言。
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```bash
+# 二选一
+ctest --test-dir build
+./build/mini-llama-tests
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+> 测试命令必须在仓库根目录运行，请勿移动或重命名 `models/`。
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+`golden-logits` 测试在 `models/tiny/` 上对比 C++ `--dump-logits` 输出与 numpy 参考实现（`scripts/test_golden.py`），需要 numpy。可用 `make_goken.sh` 重新生成 golden 数据。
 
-## License
-For open source projects, say how it is licensed.
+## 项目结构
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+```text
+include/mini_llama/   头文件
+src/                  实现文件（所有核心源文件同时编译进主程序与测试）
+errlog/               错误码 + 文件日志框架
+models/tiny/          随机权重的测试模型（JSON/BIN 格式）
+models/chat/          Qwen2 量化 GGUF（git 忽略）
+scripts/              golden 数据生成与对比脚本
+tests/                自定义测试框架用例
+docs/                 审计记录与知识点笔记
+```
+
+## 许可
+
+MIT License
