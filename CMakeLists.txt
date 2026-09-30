@@ -131,28 +131,54 @@ set(TEST_SOURCES
     tests/test_forward.cc
     tests/test_batch.cc
     tests/test_quant.cc
+    tests/test_sampler.cc
+    tests/test_debug.cc
+    tests/test_loader.cc
+    tests/test_chat.cc
 )
-# --- Test executable ---
-add_executable(mini-llama-tests ${TEST_SOURCES})
-if(MINI_LLAMA_CUDA)
-    target_compile_definitions(mini-llama-tests PRIVATE MINI_LLAMA_USE_CUDA=1)
-    target_link_libraries(mini-llama-tests PRIVATE CUDA::cudart CUDA::cublas)
-endif()
 
-target_link_libraries(mini-llama-tests PRIVATE errlog)
-add_dependencies(mini-llama-tests errlog_gen_enum)
-# 拷贝配置到测试可执行程序同级 errlog/ 目录。
-errlog_copy_config(mini-llama-tests)
+# 测试目标的公用配置：CUDA 宏/库、errlog 依赖与配置拷贝。
+function(configure_test_target target)
+    if(MINI_LLAMA_CUDA)
+        target_compile_definitions(${target} PRIVATE MINI_LLAMA_USE_CUDA=1)
+        target_link_libraries(${target} PRIVATE CUDA::cudart CUDA::cublas)
+    endif()
+    target_link_libraries(${target} PRIVATE errlog)
+    add_dependencies(${target} errlog_gen_enum)
+    errlog_copy_config(${target})
+endfunction()
+
+# --- CPU 测试目标（不含 CUDA 专项用例）---
+add_executable(mini-llama-tests ${TEST_SOURCES})
+configure_test_target(mini-llama-tests)
+
+# --- CUDA 测试目标（仅 CUDA 构建时生成，独立可执行文件便于单独运行）---
+if(MINI_LLAMA_CUDA)
+    add_executable(mini-llama-cuda-tests
+        ${MINI_LLAMA_CORE_SOURCES}
+        tests/test_main.cc
+        tests/test_cuda.cc
+    )
+    configure_test_target(mini-llama-cuda-tests)
+endif()
 
 enable_testing()
 add_test(NAME mini-llama-tests COMMAND mini-llama-tests
          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+if(MINI_LLAMA_CUDA)
+    add_test(NAME mini-llama-cuda-tests COMMAND mini-llama-cuda-tests
+             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
 
 find_package(GTest REQUIRED)
 target_link_libraries(mini-llama-tests PRIVATE GTest::gtest GTest::gtest_main)
 
 
+# errlog 子目录内的 find_package(Python3) 变量不会上浮到顶层作用域，
+# 这里重新查找，否则 golden-logits 测试永远不会被注册。
+find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
+
     add_test(
         NAME golden-logits
         COMMAND ${CMAKE_COMMAND} -E env

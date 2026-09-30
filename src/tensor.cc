@@ -98,7 +98,8 @@ size_t Tensor::flatIndex(const std::vector<int>& indices) const {
 
     size_t flat_index = 0;
     size_t stride = 1;
-    for (int axis = static_cast<int>(shape.size()) - 1; axis > 0; --axis) {
+    // 从最后一维向前累加，axis 必须取到 0，否则第一维索引会丢失。
+    for (int axis = static_cast<int>(shape.size()) - 1; axis >= 0; --axis) {
         flat_index += static_cast<size_t>(indices[axis]) * stride;
         stride *= static_cast<size_t>(shape[axis]);
     }

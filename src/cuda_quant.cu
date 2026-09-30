@@ -69,43 +69,62 @@ __device__ float q41DequantValue(const BlockQ41& block, int flat_index) {
 // CUDA Kernels
 // ===========================================================================
 //
-// All three kernels share the same structure:
-//   - Each thread computes ONE output element: y[row, out]
-//   - blockIdx.y = row (which input row)
-//   - blockIdx.x * blockDim.x + threadIdx.x = out (which output feature)
-//   - The thread loops over all quantized blocks in that weight row,
-//     dequantizing on-the-fly and accumulating the dot product.
-//
-// This is a "dequantize-then-multiply" approach: we never write the
-// dequantized weight back to global memory, saving bandwidth.
+
+// warp 协作 GEMV
+constexpr int kQ80WarpsPerBlock = 4;
 
 // Q8_0 linear: y[row, out] = sum_k(W[out, k] * x[row, k])
-// W is stored as BlockQ80: each block = {fp16_scale, int8[32]}
-__global__ void q80LinearKernel(const float* x, const BlockQ80* weight,
-                                float* y, int rows, int in_features,
-                                int out_features, int blocks_per_row) {
-  int out = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y;
+// W 以 BlockQ80 存储：每 block = {fp16_scale, int8[32]}
+__global__ void q80LinearKernel(const float* __restrict__ x,
+                                const BlockQ80* __restrict__ weight,
+                                float* __restrict__ y, int rows,
+                                int in_features, int out_features,
+                                int blocks_per_row) {
+  const int lane = threadIdx.x & 31; // warp里的lane索引
+  const int warp = threadIdx.x >> 5; // warp索引
+  const int row = blockIdx.y; // block所在行
+  const int out = blockIdx.x * kQ80WarpsPerBlock + warp; // 每个warp负责计算4个Q80block元素，每个warp中的lane负责计算4个元素
   if (out >= out_features || row >= rows) {
     return;
   }
 
   const float* x_row = x + static_cast<size_t>(row) * in_features;
   const BlockQ80* w_row = weight + static_cast<size_t>(out) * blocks_per_row;
+  const int group = lane >> 3;  // 将lane分为4组，每组8个lane，group编号为0~3
+  const int sub = lane & 7;     // 组内编号 0~7
 
   float sum = 0.0f;
-  for (int block_idx = 0; block_idx < blocks_per_row; ++block_idx) {
-    const BlockQ80& block = w_row[block_idx];
-    float d = halfBitsToFloat(block.d);
-    int base_k = block_idx * kQ80BlockSize;
-    int k_end = base_k + kQ80BlockSize < in_features
-                    ? base_k + kQ80BlockSize
-                    : in_features;
-    for (int k = base_k; k < k_end; ++k) {
-      sum += d * static_cast<float>(block.qs[k - base_k]) * x_row[k];
+  int k = 0;
+  // 主循环：整 128 权重块，权重读取跨 lane 合并。
+  for (; k + 4 * kQ80BlockSize <= in_features; k += 4 * kQ80BlockSize) {
+    const BlockQ80& block = w_row[(k / kQ80BlockSize) + group];
+    // 按字节读取：qs 起点为 2+34*i，4 字节读不满足自然对齐，会触发
+    // misaligned address；单字节读天然对齐，且跨 lane 连续可合并。
+    const int8_t* q = block.qs + 4 * sub;
+    const int base = k + group * kQ80BlockSize + 4 * sub;
+    const float d = halfBitsToFloat(block.d);
+    sum += d * (static_cast<float>(q[0]) * x_row[base] +
+                static_cast<float>(q[1]) * x_row[base + 1] +
+                static_cast<float>(q[2]) * x_row[base + 2] +
+                static_cast<float>(q[3]) * x_row[base + 3]);
+  }
+  // 行尾：不足 128 权重的整 block（含最后一个不满 32 的 block）。
+  for (; k < in_features; k += kQ80BlockSize) {
+    if (k + lane < in_features) {
+      const BlockQ80& block = w_row[k / kQ80BlockSize];
+      sum += halfBitsToFloat(block.d) *
+             static_cast<float>(block.qs[lane]) * x_row[k + lane];
     }
   }
-  y[static_cast<size_t>(row) * out_features + out] = sum;
+
+  // warp 内归约，lane 0 写出该行结果。
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    sum += __shfl_down_sync(0xffffffffu, sum, offset);
+  }
+  if (lane == 0) {
+    y[static_cast<size_t>(row) * out_features + out] = sum;
+  }
 }
 
 // Q4_0 linear: same structure, uses q40DequantValue for dequantization.
@@ -244,6 +263,12 @@ dim3 quantGrid(int out_features, int rows) {
   return dim3((out_features + kBlockSize - 1) / kBlockSize, rows);
 }
 
+// Q8_0 GEMV 每 warp 一行，grid.x 按行数除以每 block 的 warp 数换算。
+dim3 q80Grid(int out_features, int rows) {
+  return dim3((out_features + kQ80WarpsPerBlock - 1) / kQ80WarpsPerBlock,
+              rows);
+}
+
 dim3 quantBlock() { return dim3(kBlockSize); }
 
 std::vector<int> outputShape(bool input_is_1d, int rows, int out_features) {
@@ -291,7 +316,7 @@ Tensor cudaQ80LinearDeviceWeight(const Tensor& x, const void* q8_0_device,
   CudaDeviceBuffer y_dev(y.size() * sizeof(float), device_id);
   x_dev.upload(x.data.data(), x.size() * sizeof(float));
 
-  q80LinearKernel<<<quantGrid(p.out_features, p.rows), quantBlock()>>>(
+  q80LinearKernel<<<q80Grid(p.out_features, p.rows), quantBlock()>>>(
       static_cast<const float*>(x_dev.data()),
       static_cast<const BlockQ80*>(q8_0_device),
       static_cast<float*>(y_dev.data()), p.rows, p.in_features,
@@ -325,7 +350,7 @@ CudaTensor cudaQ80LinearDeviceInput(const CudaTensor& x,
   auto p = computeLinearParams(x.shape(), weight_shape, kQ80BlockSize);
   CudaTensor y(outputShape(p.input_is_1d, p.rows, p.out_features), device_id);
 
-  q80LinearKernel<<<quantGrid(p.out_features, p.rows), quantBlock()>>>(
+  q80LinearKernel<<<q80Grid(p.out_features, p.rows), quantBlock()>>>(
       static_cast<const float*>(x.data()),
       static_cast<const BlockQ80*>(q8_0_device),
       static_cast<float*>(y.data()), p.rows, p.in_features, p.out_features,
